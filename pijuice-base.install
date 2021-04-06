@@ -1,0 +1,79 @@
+pre_install() {
+#!/bin/bash
+
+#remove old softlink
+if [ -f /usr/lib/python3/dist-packages/pijuice.py ]; then
+	rm /usr/lib/python3/dist-packages/pijuice.py
+fi
+}
+
+post_install() {
+#!/bin/bash
+
+# Create user pijuice if it does not exist
+if id -u pijuice > /dev/null 2>&1; then
+	echo "User pijuice already exists"
+else
+	echo "Creating user pijuice"
+	#useradd --shell /bin/false --home-dir /var/lib/pijuice -G $USER pijuice
+	useradd --shell /bin/false --home-dir /var/lib/pijuice pijuice
+	#adduser --quiet pijuice i2c
+	# Add installing user (usually alarm) to the pijuice group
+	#adduser --quiet $USER pijuice
+	#echo "Adding pijuice to $USER"
+	#usermod -aG pijuice $USER
+fi
+
+if [ -d "/var/lib" ]; then
+	if [ ! -d "/var/lib/pijuice" ]; then
+		mkdir -p /var/lib/pijuice
+		echo directory created
+	fi
+	if [ ! -f "/var/lib/pijuice/pijuice_config.JSON" ]; then
+		echo "{\"system_task\":{\"enabled\": true}}" > /var/lib/pijuice/pijuice_config.JSON
+		echo settings file created
+	fi
+else
+	echo "/var/lib does not exist"
+	exit 1
+fi
+
+# Create symbolic link in /usr/lib/python3/dist-packages so the pijuice module is found by python 3.x (x > 5)
+#ln -sf /usr/lib/python3.9/pijuice.py /usr/lib/python3/dist-packages
+
+echo "Setting ownership and permissions"
+chown -R pijuice.pijuice /var/lib/pijuice
+chmod 700 /var/lib/pijuice
+chmod 600 /var/lib/pijuice/pijuice_config.JSON
+# Set owner and suid permission for our pijuic_cli wrapper
+#chown pijuice.pijuice /usr/bin/pijuice_cli
+#chmod 4755 /usr/bin/pijuice_cli
+#chown pijuice.pijuice /usr/bin/pijuice_cli.py
+chmod -x /usr/bin/pijuice_cli.py
+
+if [ -f /sys/class/i2c-dev/i2c-1/dev ]; then
+	echo "pijuice.service is not active running, attempting to enable"
+	systemctl unmask pijuice.service
+	systemctl enable pijuice.service
+	systemctl restart pijuice.service
+fi
+
+#exit 0
+}
+
+pre_remove() {
+#!/bin/sh
+set -e
+systemctl stop pijuice.service
+}
+
+post_remove() {
+#!/bin/sh
+set -e
+if [ -d /run/systemd/system ]; then
+	systemctl --system daemon-reload >/dev/null || true
+fi
+userdel pijuice
+#groupdel pijuice
+}
+
